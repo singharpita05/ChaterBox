@@ -1,6 +1,6 @@
-// DASHBOARD PAGE - PHASE 3 WITH REAL-TIME CHAT
+// DASHBOARD PAGE - PHASE 4 WITH NOTIFICATIONS
 
-import { LogOut, MessageSquare, Settings, Users } from 'lucide-react';
+import { Bell, BellOff, LogOut, MessageSquare, Settings, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ChatWindow from '../components/ChatWindow';
@@ -8,13 +8,20 @@ import ConversationItem from '../components/ConversationItem';
 import ProfileEditModal from '../components/ProfileEditModal';
 import UserSearch from '../components/UserSearch';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
 import { useSocket } from '../context/SocketContext';
 import { createOrGetConversation, getConversations } from '../services/conversationService';
+import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  showBrowserNotification,
+} from '../services/pushNotificationService';
 import { getAllUsers } from '../services/userService';
 
 const DashboardPage = () => {
   const { user, logout } = useAuth();
   const { socket, onlineUsers } = useSocket();
+  const { addNotification } = useNotification();
   const navigate = useNavigate();
 
   const [users, setUsers] = useState([]);
@@ -23,6 +30,13 @@ const DashboardPage = () => {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('chats'); // 'chats' or 'users'
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+
+  // Check notification permission on mount
+  useEffect(() => {
+    const permission = getNotificationPermission();
+    setNotificationsEnabled(permission === 'granted');
+  }, []);
 
   // Fetch conversations and users on component mount
   useEffect(() => {
@@ -30,11 +44,37 @@ const DashboardPage = () => {
     fetchUsers();
   }, []);
 
-  // Listen for new messages to update conversation list
+  // Listen for new messages to update conversation list and show notifications
   useEffect(() => {
     if (!socket) return;
 
     socket.on('new_message', (newMessage) => {
+      // Don't show notification if message is from current user
+      if (newMessage.sender._id === user._id) {
+        return;
+      }
+
+      // Don't show notification if conversation is currently open
+      if (selectedConversation?._id === newMessage.conversationId) {
+        return;
+      }
+
+      // Show in-app toast notification
+      addNotification({
+        title: newMessage.sender.username,
+        message: newMessage.content,
+        avatar: newMessage.sender.avatar,
+        time: 'Just now',
+      });
+
+      // Show browser notification if enabled and window is not focused
+      if (notificationsEnabled && !document.hasFocus()) {
+        showBrowserNotification(newMessage.sender.username, {
+          body: newMessage.content,
+          icon: newMessage.sender.avatar,
+        });
+      }
+
       // Refresh conversations to update last message and unread count
       fetchConversations();
     });
@@ -42,7 +82,7 @@ const DashboardPage = () => {
     return () => {
       socket.off('new_message');
     };
-  }, [socket]);
+  }, [socket, user, selectedConversation, notificationsEnabled, addNotification]);
 
   // Fetch all conversations
   const fetchConversations = async () => {
@@ -59,6 +99,31 @@ const DashboardPage = () => {
     const result = await getAllUsers();
     if (result.success) {
       setUsers(result.data);
+    }
+  };
+
+  // Handle notification permission toggle
+  const handleToggleNotifications = async () => {
+    if (!notificationsEnabled) {
+      const granted = await requestNotificationPermission();
+      setNotificationsEnabled(granted);
+      
+      if (granted) {
+        addNotification({
+          title: 'Notifications Enabled',
+          message: 'You will now receive notifications for new messages',
+          time: 'Just now',
+        });
+      }
+    } else {
+      // User wants to disable - just update state
+      // They can re-enable in browser settings if they denied
+      setNotificationsEnabled(false);
+      addNotification({
+        title: 'Notifications Disabled',
+        message: 'You can re-enable them anytime from settings',
+        time: 'Just now',
+      });
     }
   };
 
@@ -90,6 +155,9 @@ const DashboardPage = () => {
     setSelectedConversation(null);
   };
 
+  // Calculate total unread count
+  const totalUnreadCount = conversations.reduce((sum, conv) => sum + (conv.unreadCount || 0), 0);
+
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Left Sidebar */}
@@ -101,6 +169,14 @@ const DashboardPage = () => {
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-2xl font-bold text-white">ChatterBox</h1>
             <div className="flex space-x-2">
+              {/* Notification toggle button */}
+              <button
+                onClick={handleToggleNotifications}
+                className="p-2 text-white hover:bg-blue-700 rounded-lg transition"
+                title={notificationsEnabled ? 'Disable Notifications' : 'Enable Notifications'}
+              >
+                {notificationsEnabled ? <Bell size={20} /> : <BellOff size={20} />}
+              </button>
               <button
                 onClick={() => setIsProfileModalOpen(true)}
                 className="p-2 text-white hover:bg-blue-700 rounded-lg transition"
@@ -155,9 +231,9 @@ const DashboardPage = () => {
           >
             <MessageSquare size={18} />
             <span>Chats</span>
-            {conversations.length > 0 && (
-              <span className="bg-blue-600 text-white text-xs font-semibold px-2 py-0.5 rounded-full">
-                {conversations.length}
+            {totalUnreadCount > 0 && (
+              <span className="bg-red-500 text-white text-xs font-semibold px-2 py-0.5 rounded-full">
+                {totalUnreadCount}
               </span>
             )}
           </button>
