@@ -1,7 +1,7 @@
-// DASHBOARD PAGE - PHASE 4 WITH NOTIFICATIONS
+// DASHBOARD PAGE - PHASE 5 COMPLETE
 
-import { Bell, BellOff, LogOut, MessageSquare, Settings, Users } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Bell, BellOff, MessageSquare, Settings, Users } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ChatWindow from '../components/ChatWindow';
 import ConversationItem from '../components/ConversationItem';
@@ -28,14 +28,28 @@ const DashboardPage = () => {
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('chats'); // 'chats' or 'users'
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const settingsMenuRef = useRef(null);
 
   // Check notification permission on mount
   useEffect(() => {
     const permission = getNotificationPermission();
     setNotificationsEnabled(permission === 'granted');
+  }, []);
+
+  // Close settings menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target)) {
+        setShowSettingsMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   // Fetch conversations and users on component mount
@@ -177,20 +191,50 @@ const DashboardPage = () => {
               >
                 {notificationsEnabled ? <Bell size={20} /> : <BellOff size={20} />}
               </button>
-              <button
-                onClick={() => setIsProfileModalOpen(true)}
-                className="p-2 text-white hover:bg-blue-700 rounded-lg transition"
-                title="Settings"
-              >
-                <Settings size={20} />
-              </button>
-              <button
-                onClick={handleLogout}
-                className="p-2 text-white hover:bg-blue-700 rounded-lg transition"
-                title="Logout"
-              >
-                <LogOut size={20} />
-              </button>
+              
+              {/* Settings dropdown */}
+              <div className="relative" ref={settingsMenuRef}>
+                <button
+                  onClick={() => setShowSettingsMenu(!showSettingsMenu)}
+                  className="p-2 text-white hover:bg-blue-700 rounded-lg transition"
+                  title="Menu"
+                >
+                  <Settings size={20} />
+                </button>
+                
+                {showSettingsMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50">
+                    <button
+                      onClick={() => {
+                        setIsProfileModalOpen(true);
+                        setShowSettingsMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-2 hover:bg-gray-100 transition text-gray-700"
+                    >
+                      Edit Profile
+                    </button>
+                    <button
+                      onClick={() => {
+                        navigate('/settings');
+                        setShowSettingsMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-2 hover:bg-gray-100 transition text-gray-700"
+                    >
+                      Settings
+                    </button>
+                    <hr className="my-1" />
+                    <button
+                      onClick={() => {
+                        handleLogout();
+                        setShowSettingsMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-2 hover:bg-gray-100 transition text-red-600"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
